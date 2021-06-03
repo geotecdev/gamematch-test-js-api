@@ -10,20 +10,21 @@ router.get("/", async (req, res) => {
     const clientUser = await User.findByPk(userId, {
     
     }).then(function(clientUser) {
-      if (clientUser !== null) {
+      if (clientUser !== undefined) {
         const matchUsers = getMatchSessionUsers(clientUser, allUsers, allSwipes);
-
+        //console.log(matchUsers);
         matchUsers.forEach(matchUser => {
           //find invite swipe
           let inviteSwipe = allSwipes.find(sp => sp.userId === matchUser.id && sp.status === "invited");
-          if (inviteSwipe !== null) {
+          if (inviteSwipe !== undefined) {
             //set dto fields for invite response update
             let mTransaction = createMatchTransaction(clientUser, matchUser, "matched", inviteSwipe);
-            mTransaction.distance = haversineDistance(clientUser.lat, clientUser.lon, matchUser.lat, matchUser.lon);
+            mTransaction.distance = inviteSwipe.distance !== undefined ? haversineDistance(clientUser.lat, clientUser.lon, matchUser.lat, matchUser.lon) : swipe.distance;
             transactions.push(mTransaction);
           } else {
             //set dto fields as 'open' match
-            let mTransaction = createMatchTransaction(clientUser, matchUser, "open", swipe);
+            let undefinedSwp = undefined;
+            let mTransaction = createMatchTransaction(clientUser, matchUser, "open", undefinedSwp);
             mTransaction.distance = haversineDistance(clientUser.lat, clientUser.lon, matchUser.lat, matchUser.lon);            
             transactions.push(mTransaction);
           }
@@ -56,7 +57,7 @@ router.post("/", async (req, res) => {
 module.exports = router;
 
 //dto update functions
-function createMatchTransaction(clientUser, prospect, status, swipe=undefined) {    
+function createMatchTransaction(clientUser, prospect, status, swipe) {    
   let transaction = { }
   //client user fields
   transaction.username = clientUser.username;
@@ -79,14 +80,19 @@ function createMatchTransaction(clientUser, prospect, status, swipe=undefined) {
   //swipe fields
   if (swipe !== undefined) {
     transaction.swipeId = swipe.id;
-    transaction.distance = swipe.distance == undefined ? 0 : swipe.distance;
+    transaction.distance = swipe.distance ? 0 : swipe.distance;
     let msg = swipe.message;
-    if (msg === null) {
+    if (msg !== undefined) {
       msg = "";
     } else if (msg.length > 200) {
       msg = msg.substring(0, 199);
     }
+
     transaction.message = msg;
+    transaction.status = status;
+  } else {
+    transaction.swipeId = 0;
+    transaction.distance = haversineDistance(clientUser.lat, clientUser.lon, prospect.lat, prospect.lon);
   }
 
   return transaction;
@@ -99,13 +105,15 @@ function createMatchTransaction(clientUser, prospect, status, swipe=undefined) {
 //Find Matches function
 ///////////////////////////////
 function getMatchSessionUsers(clientUser, allUsers, allSwipes) {
+  let matchSessionUsers = [];
   let filteredUsers = [];
+  let openInviteUsers = [];
   const targetLat = clientUser.lat;
   const targetLon = clientUser.lon;
 
   let gameFilteredUsers = [];
   gameFilteredUsers = allUsers.filter(prospect =>
-    prospect.id != clientUser.id &&
+    prospect.id !== clientUser.id &&
     prospect.favoriteGame === clientUser.favoriteGame
   );
 
@@ -121,14 +129,20 @@ function getMatchSessionUsers(clientUser, allUsers, allSwipes) {
       sp.status !== "invited");
 
     //look for any unresolved invite swipes from client 
-    let inviteSwipeFromClient = allSwipes.filter(sp => 
-      sp.userId === clientUser.Id &&
-      sp.prospectId === prospectUser.id &&      
+    let inviteSwipesFromClient = allSwipes.filter(sp => 
+      sp.prospectId === clientUser.id &&
+      sp.userId === prospectUser.id &&      
       sp.status === "invited");
 
     //if either list has values, continue and exclue prospectUser from results
-    if (ignoreSwipes.length > 0 && inviteSwipeFromClient.length > 0) {
+    if (ignoreSwipes.length > 0) {
       return;
+    } else if (inviteSwipesFromClient !== undefined) {
+      if (inviteSwipesFromClient.length > 0) {
+        //if there is an open invite, add to deep copy of user to openInviteUsers and continue for
+        openInviteUsers.push(JSON.parse(JSON.stringify(prospectUser)));
+      return;
+      }
     }
 
     //otherwise add to filtered list
@@ -138,6 +152,7 @@ function getMatchSessionUsers(clientUser, allUsers, allSwipes) {
   setRoughDistance(clientUser, filteredUsers);
 
   //sort ascending by rough distance
+
   filteredUsers.sort(function(user1, user2) { 
     return user1.roughDistance - user2.roughDistance;
   });
@@ -147,17 +162,26 @@ function getMatchSessionUsers(clientUser, allUsers, allSwipes) {
 
   //find more accurate haversine distance closeUsers
   closeUsers.forEach(otherUser => {
-    otherUser.haversineDistance = haversineDistance(clientUser.lat, otherUser.lat, clientUser.lon, otherUser.lon);
+    otherUser.distance = haversineDistance(clientUser.lat, clientUser.lon, otherUser.lat, otherUser.lon);
   });
+
+  closeUsers.sort(function(user1, user2) {
+    return user1.distance - user2.distance;
+  })
 
   //take closest 10 of those as new array
   matchSessionUsers = closeUsers.slice(0, 9); 
 
-  //iterate backwards through matchSessionUsers, overwrite indexes with
-  //furthest distances with invite swipes
-  for (let i = filteredUsers.length; i < 0; i--) {
-    matchSessionUsers[i] = filteredUsers[i];
-  }
+  // //iterate backwards through matchSessionUsers, overwrite indexes with
+  // //furthest distances with invite swipes
+  // for (let i = filteredUsers.length; i > 0; i--) {
+  //   matchSessionUsers[i] = filteredUsers[i];
+  // }
+
+  //add open invites irrespective of distance
+  openInviteUsers.forEach(oiu => {
+    matchSessionUsers.push(oiu);
+  });
 
   return matchSessionUsers;
 }
@@ -168,29 +192,31 @@ function getMatchSessionUsers(clientUser, allUsers, allSwipes) {
 //rough distance (combined delta of coords)
 function setRoughDistance(clientUser, usersFromQuery) {
   usersFromQuery.forEach(qUser => { 
-    qUser.roughDistance = Math.abs(clientUser.lat) - Math.abs(qUser.lat) + Math.abs(clientUser.lon) - Math.abs(qUser.lon);
+    qUser.roughDistance = Math.abs(Math.abs(clientUser.lat) - Math.abs(qUser.lat)) + Math.abs(Math.abs(clientUser.lon) - Math.abs(qUser.lon));
   });
 }
 
 //haversine distance
 function haversineDistance(lat_1, lon_1, lat_2, lon_2) {
-  //haversine formula
-  const d1 = lon_2 - lon_1;
-  const lonDelta = toRadian(d1);
-  const d2 = lat_2 - lat_1;
-  const latDelta = toRadian(d2);
-  const earthsRadius = 3956; //mi
-  const x =  Math.sin(latDelta / 2) * Math.sin(latDelta / 2) + 
-          Math.cos(toRadian(lat_1)) * Math.cos(toRadian(lat_2)) * 
-          Math.sin(lonDelta / 2) * Math.sin(lonDelta / 2);
-  const y = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x)); 
-  const distance = earthsRadius * y;        
-  return distance;
-
-  function toRadian(num) {
-    return Math.round((num * Math.PI / 180), 2);
+  function toRad(x) {
+    return x * Math.PI / 180;
   }
 
+  let R = 6371; // km
+
+  let x1 = lat_2 - lat_1;
+  let dLat = toRad(x1);
+  let x2 = lon_2 - lon_1;
+  let dLon = toRad(x2)
+  let a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat_1)) * Math.cos(toRad(lat_2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  let c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  let d = R * c;
+
+  d /= 1.60934;
+
+  return d;
 }
 
 
