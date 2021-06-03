@@ -23,7 +23,7 @@ router.get("/", async (req, res) => {
           res.status(404).json({message: "no swipes with the specified id exist in the database"});
           return;
       }
-      res.status(200).json(swipe);
+      res.status(200).json(user);
     } catch (err) {
       res.status(500).json(err);
     }

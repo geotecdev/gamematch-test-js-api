@@ -1,5 +1,7 @@
 const User = require("./User");
 const Swipe = require("./Swipe");
+const MatchTransaction = require("./User");
+const MatchRecord = require("./Swipe");
 
 // Swipes belongsTo Users
 Swipe.belongsTo(User, {
@@ -13,5 +15,7 @@ User.hasMany(Swipe, {
 
 module.exports = {
     User,
-    Swipe
+    Swipe,
+    MatchTransaction,
+    MatchRecord
 };

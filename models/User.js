@@ -21,11 +21,11 @@ User.init(
             allowNull: false
         },
         lat: {
-            type: DataTypes.FLOAT,
+            type: DataTypes.DECIMAL(10, 4),
             allowNull: false        
         },
         lon: {
-            type: DataTypes.FLOAT,
+            type: DataTypes.DECIMAL(10, 4),
             allowNull: false   
         },
         favoriteGame: {

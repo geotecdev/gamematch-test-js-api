@@ -1,8 +1,7 @@
 class MatchTransaction {
     constructor(swipeStatus="") {
         this.userId;
-        this.userName;
-        this.password;
+        this.username;
         this.lat;
         this.lon;
         this.favoriteGame;
@@ -13,7 +12,7 @@ class MatchTransaction {
         this.maxSkillLevel;
         this.swipeId;
         this.prospectUserId;
-        this.prospectUserName;
+        this.prospectUsername;
         this.prospectLat;
         this.prospectLon;
         this.distance;
