@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
           let inviteSwipe = allSwipes.find(sp => sp.userId === matchUser.id && sp.status === "invited");
           if (inviteSwipe !== undefined) {
             //set dto fields for invite response update
-            let mTransaction = createMatchTransaction(clientUser, matchUser, "matched", inviteSwipe);
+            let mTransaction = createMatchTransaction(clientUser, matchUser, "invited", inviteSwipe);
             mTransaction.distance = inviteSwipe.distance !== undefined ? haversineDistance(clientUser.lat, clientUser.lon, matchUser.lat, matchUser.lon) : swipe.distance;
             transactions.push(mTransaction);
           } else {
@@ -57,7 +57,8 @@ router.post("/", async (req, res) => {
 module.exports = router;
 
 //dto update functions
-function createMatchTransaction(clientUser, prospect, status, swipe) {    
+function createMatchTransaction(clientUser, prospect, status, swipe) {   
+  let msg = ""; 
   let transaction = { }
   //client user fields
   transaction.username = clientUser.username;
@@ -81,19 +82,19 @@ function createMatchTransaction(clientUser, prospect, status, swipe) {
   if (swipe !== undefined) {
     transaction.swipeId = swipe.id;
     transaction.distance = swipe.distance ? 0 : swipe.distance;
-    let msg = swipe.message;
+    msg = swipe.message;
     if (msg !== undefined) {
       msg = "";
     } else if (msg.length > 200) {
       msg = msg.substring(0, 199);
     }
-
-    transaction.message = msg;
-    transaction.status = status;
   } else {
     transaction.swipeId = 0;
     transaction.distance = haversineDistance(clientUser.lat, clientUser.lon, prospect.lat, prospect.lon);
   }
+
+  transaction.message = msg;
+  transaction.status = status;
 
   return transaction;
 }
@@ -171,12 +172,6 @@ function getMatchSessionUsers(clientUser, allUsers, allSwipes) {
 
   //take closest 10 of those as new array
   matchSessionUsers = closeUsers.slice(0, 9); 
-
-  // //iterate backwards through matchSessionUsers, overwrite indexes with
-  // //furthest distances with invite swipes
-  // for (let i = filteredUsers.length; i > 0; i--) {
-  //   matchSessionUsers[i] = filteredUsers[i];
-  // }
 
   //add open invites irrespective of distance
   openInviteUsers.forEach(oiu => {
