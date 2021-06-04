@@ -1,6 +1,7 @@
 const router = require("express").Router();
-const { Swipe, User, MatchTransaction,  } = require("../../models");
+const { Swipe, User, MatchTransaction, MatchRecord } = require("../../models");
 
+//gets match dtos to display to user
 router.get("/", async (req, res) => {  
   try {
     let userId = parseInt(req.query.userId);
@@ -44,6 +45,62 @@ router.get("/", async (req, res) => {
     }
 });
 
+//finds old matches for passed in clientUser id (url path, not q string)
+router.get("/:id", async (req, res) => {
+  let matchRecords = [];
+  let matchInviteSwipes = [];
+  let userId = parseInt(req.params.id);
+  //console.log(userId);
+  try {
+    let allSwipes = await Swipe.findAll({raw: true});
+    //console.log(allSwipes);
+    let allUsers = await User.findAll({raw: true});
+    let clientUser = await User.findByPk(userId, {
+    
+    }).then(function(clientUser) {
+      matchInviteSwipes = allSwipes.filter(sp => 
+        sp.prospectId === clientUser.id && 
+        sp.status === "matched");
+      //console.log(matchInviteSwipes);
+      if (matchInviteSwipes !== undefined) {
+        for (let i = 0; i < matchInviteSwipes.length; i++) {
+          let muSwipe = matchInviteSwipes[i];
+          //console.log(muSwipe);
+          let matchUser = allUsers.find(mu => mu.id === parseInt(muSwipe.userId));
+          //console.log(matchUser);        
+          if (matchUser !== undefined) {
+            let clientUserSwipe = allSwipes.find(us => 
+              us.userId === clientUser.id &&
+              us.prospectId === matchUser.id);
+            //console.log(clientUserSwipe);
+            if (clientUserSwipe !== undefined) {  
+              let matchRecord = {};
+              //console.log(muSwipe);
+              matchRecord.clientUserId = clientUser.id;
+              matchRecord.matchUserId = matchUser.id;
+              matchRecord.game = muSwipe.game;
+              matchRecord.matchUsername = matchUser.username;
+              matchRecord.matchUserSkillLevel = matchUser.skillLevel;
+              matchRecord.matchUserLat = matchUser.lat;
+              matchRecord.matchUserLon = matchUser.lon;
+              matchRecord.distance = muSwipe.distance;
+              matchRecord.clientMessage = clientUserSwipe.message;
+              matchRecord.matchMessage = muSwipe.message;
+              matchRecords.push(matchRecord);
+            }
+          }
+        }
+      }
+      //console.log(matchRecords);
+    })
+    .then(function() {
+      res.status(200).json(matchRecords);
+    });
+  } catch(err) {
+    console.log(err);
+    res.status(500).json(err);
+  }
+});
 
 router.post("/", async (req, res) => {  
   try {
@@ -99,10 +156,6 @@ function createMatchTransaction(clientUser, prospect, status, swipe) {
   return transaction;
 }
 
-// transaction.userId = clientUser.id;
-
-
-
 //Find Matches function
 ///////////////////////////////
 function getMatchSessionUsers(clientUser, allUsers, allSwipes) {
@@ -140,7 +193,7 @@ function getMatchSessionUsers(clientUser, allUsers, allSwipes) {
       return;
     } else if (inviteSwipesFromClient !== undefined) {
       if (inviteSwipesFromClient.length > 0) {
-        //if there is an open invite, add to deep copy of user to openInviteUsers and continue for
+        //if there is an open invite, add deep copy of user to openInviteUsers and continue for
         openInviteUsers.push(JSON.parse(JSON.stringify(prospectUser)));
       return;
       }
@@ -209,9 +262,10 @@ function haversineDistance(lat_1, lon_1, lat_2, lon_2) {
   let c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   let d = R * c;
 
+  //convert to miles
   d /= 1.60934;
 
-  return d;
+  return Math.round(d);
 }
 
 
